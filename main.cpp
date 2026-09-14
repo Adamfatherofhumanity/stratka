@@ -2,6 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+enum Comparing
+{
+    SMALLER = -1,
+    EQUAL = 0,
+    BIGGER = 1
+};
+
 size_t StrLen(const char * str);
 int Puts(const char * str);
 char * StrCpy(char * dest, const char * src);
@@ -13,7 +20,9 @@ char * StrRvs(char * str);
 char * StrDup(const char * str);
 char * Gets(char * str);
 char * FGets(char * str, int count, FILE * stream);
-void QSortForInts(int * ptr, size_t count, size_t size);
+void QSortForInts(void *ptr, size_t first, size_t last, size_t size_of_elem, int (*Compare)(const void *ptr_a, const void *ptr_b));
+int Compare(const void *ptr_a, const void *ptr_b);
+void Swap(void *a, void* b, size_t size_of_elem);
 
 int main(void)
 {
@@ -30,7 +39,7 @@ int main(void)
         scanf("%d", numbers + i);
     }
 
-    QSortForInts(numbers, 0, size-1);
+    QSortForInts(numbers, 0, size-1, sizeof(numbers[0]), &Compare);
     printf("Sorted massive: ");
     for (unsigned int i = 0; i < size; i++)
     {
@@ -204,51 +213,62 @@ char * FGets(char * str, int count, FILE * stream)
     return str;
 }
 
-void QSortForInts(int * ptr, size_t first, size_t last)
+void QSortForInts(void *ptr, size_t first, size_t last, size_t size_of_elem, int (*Compare)(const void *ptr_a, const void *ptr_b))
 {
     if (first < last)
     {
-        float med = (ptr[first] + ptr[last] + ptr[(first + last) / 2]) / 3.0;
-
+        char med_value[size_of_elem] = {};
+        //printf("\nfirst = %zu, last = %zu\n", first, last);
+        void *med = ptr + ((first + last) / 2) * size_of_elem;
+        for (size_t index = 0; index < size_of_elem; index++) med_value[index] = *((char *) med + index);
+        //printf("med = %d\n", *((int *) med_value));
         size_t left_index = first, right_index = last, med_index = 0;
         int temp = 0;
 
         while (1)
         {
-            while (ptr[left_index] <= med && left_index++ < right_index);
+            while ((*Compare)(ptr + left_index * size_of_elem, (void *) med_value) == SMALLER && left_index < right_index && left_index != last) left_index++;
+            //printf("left_index = %zu\n", left_index);
 
-            while (ptr[right_index] > med && left_index < right_index--);
+            while ((*Compare)(ptr + right_index * size_of_elem, (void *) med_value) == BIGGER && left_index < right_index && right_index != first) right_index--;
+            //printf("right_index = %zu\n", right_index);
 
             if (left_index >= right_index)
             {
-                if (ptr[left_index] < med)
-                {
-                    med_index = left_index;
-                }
-
-                else
-                {
-                    med_index = --left_index;
-                }
-
                 break;
             }
 
-            else
-            {
-                temp = ptr[left_index];
-                ptr[left_index] = ptr[right_index];
-                ptr[right_index] = temp;
-            }
-        }
-        if (med_index != last)
-        {
-            QSortForInts(ptr, first, med_index);
-        }
+            //printf("before swap: left = %d, right = %d\n", *((int *) (ptr + left_index * size_of_elem)), *((int *) (ptr + right_index * size_of_elem)));
+            Swap(ptr + left_index * size_of_elem, ptr + right_index * size_of_elem, size_of_elem);
+            //printf("before swap: left = %d, right = %d\n", *((int *) (ptr + left_index * size_of_elem)), *((int *) (ptr + right_index * size_of_elem)));
 
-        if (med_index + 1 != first)
-        {
-            QSortForInts(ptr, med_index + 1, last);
+            if ((*Compare)(ptr + left_index * size_of_elem, (void *) med_value) == EQUAL && left_index != last) left_index++;
+            if ((*Compare)(ptr + right_index * size_of_elem, (void *) med_value) == EQUAL && right_index != first) right_index--;
         }
+        if (left_index != last) QSortForInts(ptr, first, left_index, size_of_elem, Compare);
+        if (left_index != first) QSortForInts(ptr, left_index, last, size_of_elem, Compare);
+    }
+}
+
+int Compare(const void *ptr_a, const void *ptr_b)
+{
+    const int *a = (const int *) ptr_a;
+    const int *b = (const int *) ptr_b;
+
+    //printf("\na = %d, b = %d\n", *a, *b);
+
+    if (*a < *b) return SMALLER;
+    else if (*a == *b) return EQUAL;
+    else return BIGGER;
+}
+
+void Swap(void *a, void* b, size_t size_of_elem)
+{
+    char temp = 0;
+    for (size_t index = 0; index < size_of_elem; index++)
+    {
+        temp = *((char *) (a + index));
+        *((char *) (a + index)) = *((char *) (b + index));
+        *((char *) (b + index)) = temp;
     }
 }
