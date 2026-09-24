@@ -1,7 +1,28 @@
+#define COMPARE_WITH_MED_VALUE(index) (*Compare)(Addressing(ptr, (index), size_of_elem), med_value)
+#define GET_FIRST_BYTE(index) (*((char **) Addressing(ptr, (index), size_of_elem)))[0]
+#define IS_END_OF_STRING(str) ((str) == '\n' || (str) == '\0')
+
+#ifdef DEBUG
+    #define DEBUG_PRINTF(str, ...) printf(str, ##__VA_ARGS__)
+#else
+    #define DEBUG_PRINTF(str, ...)
+    #define NDEBUG
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <io.h>
+#include <assert.h>
+
+typedef char byte;
+
+const int CODE_OF_CTRL_Z = 26;
+const int MAX_LEN_OF_FILENAME = 81;
 
 enum Comparing
 {
@@ -10,256 +31,198 @@ enum Comparing
     BIGGER = 1
 };
 
-const char name_of_input[]  = "input.txt";
-const char name_of_output[]  = "ouput.txt";
-const int number_of_str = 12000;;
-const int size_of_buffer = 10000;
+enum YesNoAnswers
+{
+    NO = 0,
+    YES = 1
+};
 
-size_t StrLen(const char *str);
-size_t PtrStrLen(const char *str[]);
-int Puts(const char *str);
-char* StrCpy(char *dest, const char *src);
-char** PtrStrCpy(char *dest[], const char *src[]);
-char* StrCat(char *dest, const char *src);
-int StrCmp(const char *lhs, const char *rhs);
-char* StrChr(const char *str, int ch);
-char* StrRChr(const char *str, int ch);
-char* StrRvs(char *str);
-char* StrDup(const char *str);
-char* Gets(char *str);
-char* FGets(char *str, int count, FILE *stream);
+struct Text
+{
+    char* text;
+    size_t size;
+};
 
-void QSort(void *ptr, size_t first, size_t last, size_t size_of_elem, int (*Compare)(const void *ptr_a, const void *ptr_b));
-void Swap(void *a, void *b, size_t size_of_elem);
-int ReadFromFile(FILE *ptr_file, char* text[]);
-int WriteToFile(FILE *ptr_file, char* text[]);
+struct Index
+{
+    char** index;
+    size_t size;
+};
+
+size_t MyStrLen(const char *str);
+size_t MyChrCount(const char *str, const int ch);
+void MyChrFind(char* index[], const char *str, const int ch);
+
+void QSort(void *ptr, const size_t first, const size_t last, const size_t size_of_elem,
+           int (*Compare)(const void *ptr_a, const void *ptr_b));
 int Compare(const void *ptr_a, const void *ptr_b);
 int CompareRev(const void *ptr_a, const void *ptr_b);
+void Swap(void *a, void *b, const size_t size_of_elem);
+void* Addressing(const void *ptr, const size_t index, const size_t size_of_elem);
+
+void TextCallocation(const int fd, Text *ptr_text_structure);
+void IndexCallocation(const char *text, Index *ptr_index_structure);
+void WriteToFile(const int fd, const char* text[], const size_t size);
+
+void PrintOpenError(const char* name_of_file);
+void PrintCallocError(const char* name);
+void PrintWriteError(const int fd);
+void PrintCloseError(const char* name_of_file);
+
+void GetInputOutputNames(char *name_of_input, char *name_of_output);
+void FilenameMenu(const char* name_of_file);
+void RequestAnswer(void);
+int InputOutputMenuAnswer(void);
+void InvalidYesOrNoMenuAnswer(void);
+void GetFilename(char *name_of_file);
+void RequestForFilename(void);
+void InvalidGetFilenameAnswer(void);
+
+bool CheckString(void);
+void SkipString(void);
+void StringClean(char *str);
 
 int main(void)
 {
-    unsigned int size = 0;
-    FILE * ptr_input = fopen(name_of_input, "r");
-    FILE * ptr_output = fopen(name_of_output, "w");
-    char * poem[number_of_str] = {};
-    char * original_poem[number_of_str] = {};
+    char name_of_input[MAX_LEN_OF_FILENAME] = "input.txt";
+    char name_of_output[MAX_LEN_OF_FILENAME] = "output.txt";
+    const int mode = 0666;
+    const char *filler = "\n------------------------------------\n\n------------------------------------\n\n";
 
-    ReadFromFile(ptr_input, original_poem);
-    size = PtrStrLen((const char **) original_poem);
-    PtrStrCpy(poem, (const char **) original_poem);
-    QSort((void *) poem, 0, size-1, sizeof(poem[0]), &Compare);
-    WriteToFile(ptr_output, poem);
-    qsort((void *) poem, size, sizeof(poem[0]), &CompareRev);
-    WriteToFile(ptr_output, poem);
-    WriteToFile(ptr_output, original_poem);
+    GetInputOutputNames(name_of_input, name_of_output);
 
-    fclose(ptr_input);
-    fclose(ptr_output);
-    for (unsigned int index = 0; index < size; index++)
-    {
-        free(poem[index]);
-    }
+    int fd_input = open(name_of_input, O_RDONLY | O_BINARY);
+    if (fd_input == -1) PrintOpenError(name_of_input);
+
+    int fd_output = open(name_of_output, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, mode);
+    if (fd_output == -1) PrintOpenError(name_of_output);
+
+    Text text_structure = {};
+    TextCallocation(fd_input, &text_structure);
+
+    Index index_structure = {};
+    IndexCallocation(text_structure.text, &index_structure);
+
+    QSort(index_structure.index, 0, index_structure.size - 1, sizeof(index_structure.index[0]), &Compare);
+    WriteToFile(fd_output, (const char**) index_structure.index, index_structure.size);
+
+    qsort(index_structure.index, index_structure.size, sizeof(index_structure.index[0]), &CompareRev);
+    write(fd_output, filler, strlen(filler));
+    WriteToFile(fd_output, (const char**) index_structure.index, index_structure.size);
+
+    write(fd_output, filler, strlen(filler));
+    write(fd_output, text_structure.text, text_structure.size);
+
+    if (close(fd_input) == -1) PrintCloseError(name_of_input);
+    if (close(fd_output) == -1) PrintCloseError(name_of_output);
+    free(text_structure.text);
+    free(index_structure.index);
 
     return 0;
 }
 
-size_t StrLen(const char *str)
+size_t MyStrLen(const char *str)
 {
+    assert(str != NULL);
+
     size_t number_of_symbols = 0;
 
-    while (str[number_of_symbols++] != '\0');
+    while (str[number_of_symbols] != '\n' && str[number_of_symbols] != '\0')
+    {
+        number_of_symbols++;
+    }
 
-    return --number_of_symbols;
+    return ++number_of_symbols;
 }
 
-int Puts(const char *str)
+size_t MyChrCount(const char *str, const int ch)
 {
-    if (str == NULL)
+    assert(str != NULL);
+
+    size_t number_of_ch = 1;
+    unsigned int index = 0;
+
+    while (str[index] != '\0')
     {
-        return -1;
-    }
-
-    unsigned int number_of_symbol = 0;
-    int returned_value = 0;
-
-    while (str[number_of_symbol++] != '\0')
-    {
-        returned_value = putchar(str[number_of_symbol]); //в слачае неудачи putchar и так поставит ошибку в stdin
-    }
-
-    returned_value = putchar('\n');
-
-    return returned_value;
-}
-
-char* StrCpy(char *dest, const char *src)
-{
-    if (dest == NULL && src == NULL)
-    {
-        return dest;
-    }
-
-    unsigned int number_of_symbol = 0;
-
-    do {
-        dest[number_of_symbol] = src[number_of_symbol];
-    } while (src[number_of_symbol++] != '\0');
-
-    return dest;
-}
-char* StrCat(char *dest, const char *src)
-{
-    unsigned int number_of_symbol_dest = 0;
-    unsigned int number_of_symbol_src = 0;
-
-    while (dest[number_of_symbol_dest++] != '\0');
-
-    while (src[number_of_symbol_src] != '\0')
-    {
-        dest[number_of_symbol_dest++] = src[number_of_symbol_src++];
-    }
-
-    return dest;
-}
-
-int StrCmp(const char *lhs, const char *rhs)
-{
-    if (lhs == NULL && rhs == NULL)
-    {
-        return 0;
-    }
-
-    unsigned int number_of_symbol_lhs = 0;
-    unsigned int number_of_symbol_rhs = 0;
-
-    while (lhs[number_of_symbol_lhs] == rhs[number_of_symbol_rhs]
-    && lhs[number_of_symbol_lhs++] != '\0' && rhs[number_of_symbol_rhs++] != '\0');
-
-    return lhs[number_of_symbol_lhs] - rhs[number_of_symbol_rhs];
-}
-
-char* StrChr(const char *str, int ch)
-{
-    unsigned int number_of_symbol = 0;
-    char * returned_value = (char *) str;
-
-    while (str[number_of_symbol] != '\0' && str[number_of_symbol++] != ch);
-
-    if (str[number_of_symbol--] != '\0')
-    {
-        returned_value += number_of_symbol;
-        return returned_value;
-    }
-
-    else
-    {
-        return 0;
-    }
-}
-
-char* StrRChr(const char *str, int ch)
-{
-    unsigned int number_of_symbol = 0;
-    char * returned_value = 0;
-
-    while (str[number_of_symbol] != '\0')
-    {
-        if (str[number_of_symbol] == ch)
+        if (str[index] == ch && str[index + 1] != '\0')
         {
-            returned_value = (char *) str + number_of_symbol;
+            number_of_ch++;
         }
 
-        number_of_symbol++;
+        index++;
     }
 
-    return returned_value;
+    return number_of_ch;
 }
 
-char* StrRvs(char *str)
+void MyChrFind(char* index[], const char *str, const int ch)
 {
-    unsigned int number_of_left_symbol = 0, number_of_right_symbol = StrLen(str) - 1;
-    char temp = 0;
+    assert(index != NULL);
+    assert(str != NULL);
 
-    while (number_of_left_symbol < number_of_right_symbol)
+    size_t number_of_str = 1;
+    unsigned int index_of_elem = 0;
+
+    while (str[index_of_elem] != '\0')
     {
-        temp = str[number_of_left_symbol];
-        str[number_of_left_symbol++] = str[number_of_right_symbol];
-        str[number_of_right_symbol--] = temp;
+        if (str[index_of_elem] == ch && str[index_of_elem + 1] != '\0')
+        {
+            index[number_of_str] = (char*) str + index_of_elem + 1;
+            number_of_str++;
+        }
+
+        index_of_elem++;
     }
-
-    return str;
 }
 
-char* StrDup(const char *str)
+void QSort(void *ptr, const size_t first, const size_t last, const size_t size_of_elem,
+           int (*Compare)(const void *ptr_a, const void *ptr_b))
 {
-    char * str_dup = (char *) calloc(StrLen(str) + 1, sizeof(char));
+    assert(ptr != NULL);
 
-    return StrCpy(str_dup, str);
-}
-
-char* Gets(char *str)
-{
-    int ch = 0;
-    unsigned int number_of_symbol = 0;
-
-    while ((ch = getchar()) != '\n' && ch != EOF) //в слачае неудачи getchar и так поставит ошибку в stdin
-    {
-        str[number_of_symbol++] = ch;
-    }
-
-    str[number_of_symbol] = '\0';
-
-    return str;
-}
-
-char* FGets(char *str, int count, FILE *stream)
-{
-    int ch = 0;
-    unsigned int number_of_symbol = 0;
-
-    while (number_of_symbol < count - 1 && (ch = getc(stream)) != '\n' && ch != EOF) //в слачае неудачи getc и так поставит ошибку в stdin
-    {
-        str[number_of_symbol++] = ch;
-    }
-
-    str[number_of_symbol] = '\0';
-
-    if (ch == EOF) return NULL;
-    else return str;
-}
-
-void QSort(void *ptr, size_t first, size_t last, size_t size_of_elem, int (*Compare)(const void *ptr_a, const void *ptr_b))
-{
     if (first < last)
     {
-        char med_value[size_of_elem] = {};
-        //printf("\nfirst = %zu, last = %zu\n", first, last);
+        char *med_value = (char*) calloc(size_of_elem, sizeof(char));
+        if (med_value == NULL) PrintCallocError("med value");
+        DEBUG_PRINTF("\nfirst = %d, last = %d\n", first, last);
+
         void *med = (char *) ptr + ((first + last) / 2) * size_of_elem;
-        for (size_t index = 0; index < size_of_elem; index++) med_value[index] = *((char *) med + index);
-        //printf("med = \n");
-        size_t left_index = first, right_index = last, med_index = 0;
-        int temp = 0;
+        for (size_t index = 0; index < size_of_elem; index++)
+        {
+            med_value[index] = *((char *) med + index);
+        }
+
+        DEBUG_PRINTF("med_value = '%c'\n", (*((char **) med_value))[0]);
+
+        size_t left_index = first, right_index = last;
 
         while (1)
         {
-            while ((*Compare)((char *) ptr + left_index * size_of_elem, (void *) med_value) == SMALLER && left_index < right_index && left_index != last) left_index++;
-            //printf("left_index = %zu\n", left_index);
+            while (COMPARE_WITH_MED_VALUE(left_index) == SMALLER
+            && left_index < right_index && left_index != last) left_index++;
+            DEBUG_PRINTF("left_index = %d ", left_index);
 
-            while ((*Compare)((char *) ptr + right_index * size_of_elem, (void *) med_value) == BIGGER && left_index < right_index && right_index != first) right_index--;
-            //printf("right_index = %zu\n", right_index);
+            while (COMPARE_WITH_MED_VALUE(right_index) == BIGGER
+            && left_index < right_index && right_index != first) right_index--;
+            DEBUG_PRINTF("right_index = %d\n", right_index);
 
             if (left_index >= right_index)
             {
                 break;
             }
 
-            //printf("before swap: left = '%c', right = '%c'\n", (*((char **) (ptr + left_index * size_of_elem)))[0], (*((char **) (ptr + right_index * size_of_elem)))[0]);
-            Swap((char *) ptr + left_index * size_of_elem, (char *) ptr + right_index * size_of_elem, size_of_elem);
-            //printf("after swap: left = '%c', right = '%c'\n", (*((char **) (ptr + left_index * size_of_elem)))[0], (*((char **) (ptr + right_index * size_of_elem)))[0]);
+            DEBUG_PRINTF("before swap: ptr[left_index] = '%c', ptr[right_index] = '%c'\n",
+                          GET_FIRST_BYTE(left_index), GET_FIRST_BYTE(right_index));
+            Swap(Addressing(ptr, left_index, size_of_elem), Addressing(ptr, right_index, size_of_elem), size_of_elem);
+            DEBUG_PRINTF("after swap: ptr[left_index] = '%c', ptr[right_index] = '%c'\n",
+                          GET_FIRST_BYTE(left_index), GET_FIRST_BYTE(right_index));
 
-            if ((*Compare)((char *) ptr + left_index * size_of_elem, (void *) med_value) == EQUAL && left_index != last) left_index++;
-            if ((*Compare)((char *) ptr + right_index * size_of_elem, (void *) med_value) == EQUAL && right_index != first) right_index--;
+            if (COMPARE_WITH_MED_VALUE(left_index) == EQUAL && left_index != last) left_index++;
+            if (COMPARE_WITH_MED_VALUE(right_index) == EQUAL && right_index != first) right_index--;
         }
+
+        free(med_value);
+
         if (left_index != last) QSort(ptr, first, left_index, size_of_elem, Compare);
         if (left_index != first) QSort(ptr, left_index, last, size_of_elem, Compare);
     }
@@ -267,124 +230,277 @@ void QSort(void *ptr, size_t first, size_t last, size_t size_of_elem, int (*Comp
 
 int Compare(const void *ptr_a, const void *ptr_b)
 {
-    const char **a = (const char **) ptr_a;
-    const char **b = (const char **) ptr_b;
+    assert(ptr_a != NULL);
+    assert(ptr_b != NULL);
+
+    const char *a = *((const char **) ptr_a);
+    const char *b = *((const char **) ptr_b);
     unsigned int index_a = 0, index_b = 0;
 
-    while ((*a)[index_a] != '\0' && (*b)[index_b] != '\0')
+    while (!IS_END_OF_STRING(a[index_a]) && !IS_END_OF_STRING(b[index_b]))
     {
-        if (!isalpha((*a)[index_a])) index_a++;
-        else if (!isalpha((*b)[index_b])) index_b++;
+        if (!isalpha(a[index_a])) index_a++;
+        else if (!isalpha(b[index_b])) index_b++;
         else
         {
-            if (tolower((*a)[index_a]) > tolower((*b)[index_b])) return BIGGER;
-            else if (tolower((*a)[index_a]) < tolower((*b)[index_b])) return SMALLER;
+            if (tolower(a[index_a]) > tolower(b[index_b])) return BIGGER;
+            if (tolower(a[index_a]) < tolower(b[index_b])) return SMALLER;
             index_a++;
             index_b++;
         }
     }
 
-    if ((*a)[index_a] == '\0' && (*b)[index_b] == '\0') return EQUAL;
-    else if ((*a)[index_a] == '\0') return SMALLER;
-    else return BIGGER;
+    if (IS_END_OF_STRING(a[index_a]) && IS_END_OF_STRING(b[index_b])) return EQUAL;
+    if (IS_END_OF_STRING(a[index_a])) return SMALLER;
+    return BIGGER;
 }
 
 int CompareRev(const void *ptr_a, const void *ptr_b)
 {
-    const char **a = (const char **) ptr_a;
-    const char **b = (const char **) ptr_b;
+    assert(ptr_a != NULL);
+    assert(ptr_b != NULL);
+
+    const char *a = *((const char **) ptr_a);
+    const char *b = *((const char **) ptr_b);
     int index_a = 0, index_b = 0;
 
-    while ((*a)[index_a] != '\0') index_a++;
-    while ((*b)[index_b] != '\0') index_b++;
+    while (!IS_END_OF_STRING(a[index_a])) index_a++;
+    while (!IS_END_OF_STRING(b[index_b])) index_b++;
 
     while (index_a >= 0 && index_b >= 0)
     {
-        if (!isalpha((*a)[index_a])) index_a--;
-        else if (!isalpha((*b)[index_b])) index_b--;
+        if (!isalpha(a[index_a])) index_a--;
+        else if (!isalpha(b[index_b])) index_b--;
         else
         {
-            if (tolower((*a)[index_a]) > tolower((*b)[index_b])) return BIGGER;
-            else if (tolower((*a)[index_a]) < tolower((*b)[index_b])) return SMALLER;
+            if (tolower(a[index_a]) > tolower(b[index_b])) return BIGGER;
+            if (tolower(a[index_a]) < tolower(b[index_b])) return SMALLER;
             index_a--;
             index_b--;
         }
     }
 
-    if (index_a == 0 && index_b == 0) return EQUAL;
-    else if (index_a == 0) return SMALLER;
-    else return BIGGER;
+    if (index_a < 0 && index_b < 0) return EQUAL;
+    if (index_a < 0) return SMALLER;
+    return BIGGER;
 }
 
-void Swap(void *a, void* b, size_t size_of_elem)
+void Swap(void *a, void* b, const size_t size_of_elem)
 {
-    char temp = 0;
+    assert(a != NULL);
+    assert(b != NULL);
+
+    byte temp = 0;
+
     for (size_t index = 0; index < size_of_elem; index++)
     {
-        temp = *((char *) a + index);
-        *((char *) a + index) = *((char *) b + index);
-        *((char *) b + index) = temp;
+        temp = *((byte *) a + index);
+        *((byte *) a + index) = *((byte *) b + index);
+        *((byte *) b + index) = temp;
     }
 }
 
-int ReadFromFile(FILE * ptr_file, char * text[])
+void* Addressing(const void *ptr, const size_t index, const size_t size_of_elem)
 {
-    char buffer[size_of_buffer] = "";
-    char clean_buffer[size_of_buffer] = "";
-    int success_str = 0;
+    assert(ptr != NULL);
+
+    return (char *) ptr + index * size_of_elem;
+}
+
+void TextCallocation(const int fd, Text *ptr_text_structure)
+{
+    assert(ptr_text_structure != NULL);
+
+    struct stat statistics = {};
+    fstat(fd, &statistics);
+
+    ptr_text_structure->text = (char *) calloc(statistics.st_size + 1, sizeof(char));
+    if (ptr_text_structure->text == NULL) PrintCallocError("text");
+    ptr_text_structure->size = statistics.st_size + 1;
+
+    read(fd, ptr_text_structure->text, statistics.st_size);
+    if (ptr_text_structure->text[statistics.st_size - 1] != '\n') ptr_text_structure->text[statistics.st_size] = '\n';
+}
+
+void IndexCallocation(const char *text, Index *ptr_index_structure)
+{
+    assert(text != NULL);
+    assert(ptr_index_structure != NULL);
+
+    int number_of_strings = MyChrCount(text, '\n');
+
+    ptr_index_structure->index = (char**) calloc(number_of_strings, sizeof(char *));
+    if (ptr_index_structure->index == NULL) PrintCallocError("index massive");
+    ptr_index_structure->size = number_of_strings;
+
+    ptr_index_structure->index[0] = (char *) text;
+    MyChrFind(ptr_index_structure->index, text, '\n');
+}
+
+void WriteToFile(const int fd, const char* text[], const size_t size)
+{
+    assert(text != NULL);
+
+    for (unsigned int index = 0; index < size; index++)
+    {
+        if (write(fd, text[index], MyStrLen(text[index])) == -1)
+        {
+            PrintWriteError(fd);
+        }
+    }
+}
+
+void PrintOpenError(const char* name_of_file)
+{
+    assert(name_of_file != NULL);
+
+    printf("Error opening file \"%s\".\n", name_of_file);
+}
+
+void PrintCallocError(const char* name)
+{
+    assert(name != NULL);
+
+    printf("Error callocation for \"%s\".\n", name);
+}
+
+void PrintWriteError(const int fd)
+{
+    printf("Error writing file (file desc = %d)).\n", fd);
+}
+
+void PrintCloseError(const char* name_of_file)
+{
+    assert(name_of_file != NULL);
+
+    printf("Error closing file \"%s\".\n", name_of_file);
+}
+
+void GetInputOutputNames(char *name_of_input, char *name_of_output)
+{
+    assert(name_of_input != NULL);
+    assert(name_of_output != NULL);
+
+    FilenameMenu("input");
+    if (InputOutputMenuAnswer() == YES) GetFilename(name_of_input);
+
+    FilenameMenu("output");
+    if (InputOutputMenuAnswer() == YES) GetFilename(name_of_output);
+}
+
+void FilenameMenu(const char* name_of_file)
+{
+    assert(name_of_file != NULL);
+
+    printf("\nDo you want to enter custom %s filename (default name is %s.txt)?\n"
+           "y) Yes\n"
+           "n) No\n", name_of_file, name_of_file);
+    RequestAnswer();
+
+}
+
+void RequestAnswer(void)
+{
+    printf("\nEnter chosen variant: ");
+}
+
+int InputOutputMenuAnswer(void)
+{
+    int answer = 0;
+
+    while (1)
+    {
+        while (isspace(answer = getchar()));
+
+        if (answer == 'y' || answer == 'Y')
+        {
+            if (CheckString()) return YES;
+        }
+
+        else if (answer == 'n' || answer == 'N')
+        {
+            if (CheckString()) return NO;
+        }
+
+        SkipString();
+        InvalidYesOrNoMenuAnswer();
+    }
+}
+
+void InvalidYesOrNoMenuAnswer(void)
+{
+    printf("Verify only y(Y)/n(N) answers: ");
+}
+
+void GetFilename(char *name_of_file)
+{
+    assert(name_of_file != NULL);
+
+    int symbol = 0;
+    unsigned int index = 0;
+    bool need_to_continue = true;
+
+    RequestForFilename();
+
+    while (need_to_continue)
+    {
+        while (isspace(symbol = getchar()));
+        index = 0;
+        StringClean(name_of_file);
+
+        while (index < MAX_LEN_OF_FILENAME - 1 && symbol != CODE_OF_CTRL_Z && symbol != EOF && !isspace(symbol))
+        {
+            name_of_file[index++] = symbol;
+            symbol = getchar();
+        }
+
+        if (symbol == '\n') need_to_continue = false;
+
+        else
+        {
+            SkipString();
+            InvalidGetFilenameAnswer();
+        }
+    }
+}
+
+void RequestForFilename(void)
+{
+    printf("\nEnter custom filename (less then %d symbols): ", MAX_LEN_OF_FILENAME);
+}
+
+void InvalidGetFilenameAnswer(void)
+{
+    printf("In entered data more then 2 words or more then %d symbols. Enter data correctly: ", MAX_LEN_OF_FILENAME - 1);
+}
+
+
+bool CheckString(void)
+{
+    int ch = 0;
+
+    while (isspace(ch = getchar()))
+    {
+        if (ch == '\n') return true;
+    }
+
+    if (ch != CODE_OF_CTRL_Z && ch != EOF) SkipString();
+
+    return false;
+}
+
+void SkipString(void)
+{
+    int ch = 0;
+
+    while ((ch = getchar()) != CODE_OF_CTRL_Z && ch != '\n' && ch != EOF);
+}
+
+void StringClean(char *str)
+{
+    assert(str != NULL);
+
     unsigned int index = 0;
 
-    //printf("Zashel v reading function\n");
-
-    while (FGets(buffer, size_of_buffer - 1, ptr_file) != NULL)
-    {
-        text[success_str] = (char *) calloc(StrLen(buffer) + 1, sizeof(char));
-        StrCpy(text[success_str++], buffer);
-        //printf("success_str = %d, ", success_str);
-        //index = 0;
-        //printf("'");
-        //while (buffer[index] != '\0') printf("%c", buffer[index++]);
-        //printf("'\n");
-        StrCpy(buffer, clean_buffer);
-    }
-
-    return success_str;
-}
-
-int WriteToFile(FILE *ptr_file, char *text[])
-{
-    int success_str = 0;
-    //printf("In WTF func\n");
-    fprintf(ptr_file, "\nc\ne\ng\nf\no\nl\nt\na\nr\no\nt\ne\nb\na\nl\n\n");
-    while (text[success_str] != 0)
-    {
-        fprintf(ptr_file, "%s\n", text[success_str++]);
-    }
-
-    return success_str;
-}
-
-size_t PtrStrLen(const char *str[])
-{
-    size_t number_of_symbols = 0;
-
-    while (str[number_of_symbols++] != 0);
-
-    return --number_of_symbols;
-}
-
-char** PtrStrCpy(char *dest[], const char *src[])
-{
-    if (dest == NULL && src == NULL)
-    {
-        return dest;
-    }
-
-    unsigned int number_of_symbol = 0;
-
-    do {
-        dest[number_of_symbol] = (char *) src[number_of_symbol];
-    } while (src[number_of_symbol++] != 0);
-
-    return dest;
+    while (str[index] != '\0') str[index++] = '\0';
 }
